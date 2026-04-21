@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# Bumped when ``compare_uploaded_pair`` contract changes (Streamlit checks this after importlib.reload).
+UPLOAD_QC_API_VERSION = 2
+
 import io
 import logging
 import re

@@ -47,7 +47,7 @@ This matches **private code on GitHub** and **only invited people can open the Q
    - After the first successful build, configure **Sharing** (public vs private + email invites) as in the section above—not everyone needs the raw URL to be world-accessible.
 
 3. **Updates**
-   - Pushes to the connected branch trigger redeploys (per Streamlit defaults). Use **Manage app → Reboot** or build logs if something looks stuck.
+   - Pushes to the connected branch trigger redeploys (per Streamlit defaults). After pulling Python changes, use **Manage app → Reboot** once so workers reload modules (the Streamlit UI calls `importlib.reload` on `sanitycheck.pipeline`, but a reboot clears any stale process state).
 
 ## Team access on Streamlit Cloud (summary)
 

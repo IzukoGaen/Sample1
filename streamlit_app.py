@@ -8,6 +8,7 @@ Run from project root (after ``pip install -e ".[ui]"``):
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import sys
 from pathlib import Path
@@ -23,19 +24,11 @@ if _SRC.is_dir():
 
 import streamlit as st
 
-from sanitycheck.pipeline import compare_uploaded_pair
+import sanitycheck.pipeline as _pipeline_mod
 
-
-def _fallback_insights_message() -> dict:
-    """When an older ``compare_uploaded_pair`` (2-tuple) is deployed next to a newer UI."""
-    return {
-        "headline": "Insights need the latest code: `compare_uploaded_pair` should return 3 values. Pull `main` and reboot the app on Streamlit Cloud.",
-        "files": {},
-        "sheets": {},
-        "worksheet_overall": [],
-        "worksheet_counts": {"modified": 0, "added": 0, "removed": 0, "unchanged": 0},
-        "detail_row_counts": {},
-    }
+# Reload so Cloud picks up the repo copy of ``pipeline.py`` (not a stale bytecode / site-packages shadow).
+importlib.reload(_pipeline_mod)
+compare_uploaded_pair = _pipeline_mod.compare_uploaded_pair
 
 
 def _run_compare_with_optional_progress(
@@ -48,7 +41,7 @@ def _run_compare_with_optional_progress(
     profile: bool,
     on_progress,
 ) -> tuple[bytes, list, dict]:
-    """Call ``compare_uploaded_pair``; tolerate older deployments (no ``on_progress``, 2-tuple return)."""
+    """Call ``compare_uploaded_pair``; tolerate older deployments (no ``on_progress`` kw only)."""
     sig = inspect.signature(compare_uploaded_pair)
     kw: dict = dict(
         original_bytes=original_bytes,
@@ -61,9 +54,11 @@ def _run_compare_with_optional_progress(
     if "on_progress" in sig.parameters:
         kw["on_progress"] = on_progress
     raw = compare_uploaded_pair(**kw)
-    if len(raw) == 2:
-        data, profs = raw
-        return data, profs, _fallback_insights_message()
+    if len(raw) != 3:
+        raise RuntimeError(
+            "compare_uploaded_pair must return (qc_bytes, profiles, summary). "
+            "Push the latest `src/sanitycheck/pipeline.py` to GitHub, then Streamlit **Manage app → Reboot**."
+        )
     data, profs, summary = raw
     return data, profs, summary
 
@@ -150,6 +145,11 @@ with col_t:
     )
 
 with st.sidebar:
+    if getattr(_pipeline_mod, "UPLOAD_QC_API_VERSION", 0) < 2:
+        st.error(
+            "QC backend is outdated (missing `UPLOAD_QC_API_VERSION`). "
+            "Push `main` and reboot the app on Streamlit Cloud."
+        )
     st.header("Report type")
     filetype = st.selectbox(
         "Used for *Data Feed Setup* columns",

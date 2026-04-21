@@ -8,7 +8,17 @@ Run from project root (after ``pip install -e ".[ui]"``):
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+# Streamlit Community Cloud may install deps via ``uv`` without resolving ``-e .``;
+# ensure ``src/`` is on sys.path so ``import sanitycheck`` works from repo root.
+_ROOT = Path(__file__).resolve().parent
+_SRC = _ROOT / "src"
+if _SRC.is_dir():
+    _src_str = str(_SRC)
+    if _src_str not in sys.path:
+        sys.path.insert(0, _src_str)
 
 import streamlit as st
 

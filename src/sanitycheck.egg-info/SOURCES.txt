@@ -14,3 +14,4 @@ src/sanitycheck.egg-info/SOURCES.txt
 src/sanitycheck.egg-info/dependency_links.txt
 src/sanitycheck.egg-info/requires.txt
 src/sanitycheck.egg-info/top_level.txt
+tests/test_duplicate_screen_criteria.py

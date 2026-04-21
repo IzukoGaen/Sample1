@@ -1,13 +1,12 @@
-# Minimal install (library + CLI-style use)
+# Streamlit Community Cloud: pip install -r requirements.txt (often via ``uv``).
+# setuptools + wheel help ``-e .`` build the ``sanitycheck`` package from pyproject.toml.
+# ``streamlit_app.py`` also adds ``src/`` to sys.path if the editable install is skipped.
+setuptools>=68
+wheel
 pandas>=2.0
 numpy>=1.24
 openpyxl>=3.1
 textdistance>=4.5
 psutil>=5.9
-
-# Optional UI
-# streamlit>=1.28
-
-# Optional API
-# fastapi>=0.109
-# uvicorn[standard]>=0.27
+streamlit>=1.28
+-e .

@@ -31,12 +31,66 @@ def _download_filename(test_filename: str) -> str:
     return f"{safe[:80]}_QCResult.xlsx"
 
 
+def _render_insights(summary: dict, profs: list) -> None:
+    st.subheader("Insights")
+    st.info(summary.get("headline", ""))
+
+    wc = summary.get("worksheet_counts", {})
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Worksheets modified", wc.get("modified", 0))
+    c2.metric("Only in test", wc.get("added", 0))
+    c3.metric("Only in original", wc.get("removed", 0))
+    c4.metric("Unchanged (tracked)", wc.get("unchanged", 0))
+
+    dc = summary.get("detail_row_counts", {})
+    with st.expander("Detail row counts (QC tables)", expanded=False):
+        st.caption("Rows written to the result workbook for each section (0 if not compared or empty).")
+        st.dataframe(
+            [
+                {"Section": k.replace("_", " ").title(), "Rows": v}
+                for k, v in sorted(dc.items(), key=lambda x: x[0])
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    wo = summary.get("worksheet_overall", [])
+    if wo:
+        with st.expander("Worksheet status (overall)", expanded=False):
+            st.dataframe(wo, use_container_width=True, hide_index=True)
+
+    sh = summary.get("sheets", {})
+    if sh.get("only_in_test") or sh.get("only_in_original"):
+        with st.expander("Sheet name mismatches", expanded=False):
+            st.write("**Only in test file:**", ", ".join(sh.get("only_in_test", [])) or "—")
+            st.write("**Only in original file:**", ", ".join(sh.get("only_in_original", [])) or "—")
+
+    if profs:
+        p = profs[0]
+        st.caption(
+            f"Last run: **{p.seconds:.2f}s**"
+            + (
+                f", RSS **{p.rss_bytes_after / 1024 / 1024:.1f} MB**"
+                if p.rss_bytes_after
+                else ""
+            )
+        )
+
+    with st.expander("Raw summary (JSON)", expanded=False):
+        st.json(summary)
+
+
 st.set_page_config(page_title="Feed sanity QC", layout="wide")
 st.title("Feed sanity QC")
 st.caption(
     "Upload the **original** (baseline) workbook and the **test** workbook. "
     "Names do not matter — each file has its own box. Choose the report type, run QC, then download **one** Excel result."
 )
+
+if "last_qc" not in st.session_state:
+    st.session_state.last_qc = None
+if "qc_just_finished" not in st.session_state:
+    st.session_state.qc_just_finished = False
 
 col_o, col_t = st.columns(2)
 with col_o:
@@ -61,6 +115,10 @@ with st.sidebar:
         help="Independent of file names — pick which report shape your workbooks use.",
     )
     profile = st.checkbox("Show timing / memory row", value=True)
+    if st.button("Clear last QC result", help="Remove cached download and insights from this browser session."):
+        st.session_state.last_qc = None
+        st.session_state.qc_just_finished = False
+        st.rerun()
 
 run_disabled = original is None or test is None
 if st.button("Run QC", type="primary", disabled=run_disabled):
@@ -69,37 +127,56 @@ if st.button("Run QC", type="primary", disabled=run_disabled):
     orig_bytes = original.getvalue()
     test_bytes = test.getvalue()
 
-    with st.spinner("Running comparison…"):
+    with st.status("Running QC…", expanded=True) as status:
+
+        def _progress(msg: str) -> None:
+            status.write(msg)
+
         try:
-            qc_bytes, profs = compare_uploaded_pair(
+            qc_bytes, profs, summary = compare_uploaded_pair(
                 original_bytes=orig_bytes,
                 test_bytes=test_bytes,
                 original_filename=orig_name,
                 test_filename=test_name,
                 filetype=filetype,
                 profile=profile,
+                on_progress=_progress,
             )
-        except Exception as e:
-            st.exception(e)
+        except Exception:
+            status.update(label="QC failed", state="error")
+            raise
         else:
-            st.success("QC workbook ready — download below.")
-            if profs:
-                p = profs[0]
-                st.caption(
-                    f"Elapsed **{p.seconds:.2f}s**"
-                    + (
-                        f", RSS **{p.rss_bytes_after / 1024 / 1024:.1f} MB**"
-                        if p.rss_bytes_after
-                        else ""
-                    )
-                )
-            st.download_button(
-                label="Download QC result (.xlsx)",
-                data=qc_bytes,
-                file_name=_download_filename(test_name),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-            )
+            status.update(label="QC finished", state="complete", expanded=False)
+
+    st.session_state.last_qc = {
+        "bytes": qc_bytes,
+        "profs": profs,
+        "summary": summary,
+        "test_name": test_name,
+    }
+    st.session_state.qc_just_finished = True
+    st.rerun()
+
+if st.session_state.last_qc is not None:
+    if st.session_state.qc_just_finished:
+        st.success("QC workbook ready — download below or review insights.")
+        st.session_state.qc_just_finished = False
+    cache = st.session_state.last_qc
+    qc_bytes = cache["bytes"]
+    profs = cache["profs"]
+    summary = cache["summary"]
+    test_name = cache["test_name"]
+
+    st.download_button(
+        label="Download QC result (.xlsx)",
+        data=qc_bytes,
+        file_name=_download_filename(test_name),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+        key="dl_qc_xlsx",
+    )
+
+    _render_insights(summary, profs)
 
 with st.expander("Batch mode (optional)"):
     st.markdown(

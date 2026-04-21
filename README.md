@@ -45,6 +45,8 @@ outputs, profiles = run_sanity_checks(
 
 Two uploads — **Original** and **Test** — no filename pairing. You pick **Feed Report** vs **Fund Report** in the sidebar. Download is a **single `.xlsx`**, not a zip.
 
+While QC runs, the UI shows a **live status** (read Excel → each worksheet comparison → build workbook). After a successful run you get **insights**: headline, worksheet-level counts, detail row counts, optional JSON. The last result stays in the session until you clear it from the sidebar or refresh.
+
 ```bash
 py -m streamlit run streamlit_app.py
 ```

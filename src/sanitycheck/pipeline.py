@@ -6,6 +6,7 @@ import io
 import logging
 import re
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO
 
@@ -16,6 +17,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 from sanitycheck.engine import compare_workbook_pair
 from sanitycheck.export import export_log, export_log_bytes
+from sanitycheck.insights import summarize_comparison_result
 from sanitycheck.models import RunProfile
 from sanitycheck.pairing import list_excel_files_in_dir, pair_excel_filenames
 from sanitycheck.profiling import log_run
@@ -155,30 +157,43 @@ def compare_uploaded_pair(
     test_filename: str = "test.xlsx",
     filetype: str = "Feed Report",
     profile: bool = True,
-) -> tuple[bytes, list[RunProfile]]:
+    on_progress: Callable[[str], None] | None = None,
+) -> tuple[bytes, list[RunProfile], dict]:
     """
-    Compare one **test** workbook (bytes) to one **original** (bytes); return QC ``.xlsx`` bytes.
+    Compare one **test** workbook (bytes) to one **original** (bytes); return QC ``.xlsx`` bytes,
+    profiling rows, and a JSON-serializable **insights** dict (see ``summarize_comparison_result``).
 
     Does not use filename pairing — roles are explicit. ``filetype`` must be
     ``\"Feed Report\"`` or ``\"Fund Report\"`` for *Data Feed Setup* column logic.
+
+    ``on_progress`` is invoked with short status strings during load, compare, and export.
     """
+    if on_progress is not None:
+        on_progress("Reading **original** workbook from upload…")
     wk_orig = pd.read_excel(io.BytesIO(original_bytes), sheet_name=None)
+    if on_progress is not None:
+        on_progress("Reading **test** workbook from upload…")
     wk_test = pd.read_excel(io.BytesIO(test_bytes), sheet_name=None)
 
-    def _run() -> bytes:
+    def _run() -> tuple[bytes, dict]:
         res = compare_workbook_pair(
             wk_test,
             wk_orig,
             name_test=test_filename,
             name_feed=original_filename,
             filetype=filetype,
+            on_progress=on_progress,
         )
-        return export_log_bytes(res)
+        if on_progress is not None:
+            on_progress("Writing QC Excel to memory…")
+        blob = export_log_bytes(res)
+        return blob, summarize_comparison_result(res)
 
     if profile:
-        data, prof = log_run("compare_uploaded_pair", _run)
-        return data, [prof]
-    return _run(), []
+        (data, summary), prof = log_run("compare_uploaded_pair", _run)
+        return data, [prof], summary
+    data, summary = _run()
+    return data, [], summary
 
 
 def run_sanity_checks_from_uploads(

@@ -8,6 +8,7 @@ Run from project root (after ``pip install -e ".[ui]"``):
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -23,6 +24,48 @@ if _SRC.is_dir():
 import streamlit as st
 
 from sanitycheck.pipeline import compare_uploaded_pair
+
+
+def _fallback_insights_message() -> dict:
+    """When an older ``compare_uploaded_pair`` (2-tuple) is deployed next to a newer UI."""
+    return {
+        "headline": "Insights need the latest code: `compare_uploaded_pair` should return 3 values. Pull `main` and reboot the app on Streamlit Cloud.",
+        "files": {},
+        "sheets": {},
+        "worksheet_overall": [],
+        "worksheet_counts": {"modified": 0, "added": 0, "removed": 0, "unchanged": 0},
+        "detail_row_counts": {},
+    }
+
+
+def _run_compare_with_optional_progress(
+    *,
+    original_bytes: bytes,
+    test_bytes: bytes,
+    original_filename: str,
+    test_filename: str,
+    filetype: str,
+    profile: bool,
+    on_progress,
+) -> tuple[bytes, list, dict]:
+    """Call ``compare_uploaded_pair``; tolerate older deployments (no ``on_progress``, 2-tuple return)."""
+    sig = inspect.signature(compare_uploaded_pair)
+    kw: dict = dict(
+        original_bytes=original_bytes,
+        test_bytes=test_bytes,
+        original_filename=original_filename,
+        test_filename=test_filename,
+        filetype=filetype,
+        profile=profile,
+    )
+    if "on_progress" in sig.parameters:
+        kw["on_progress"] = on_progress
+    raw = compare_uploaded_pair(**kw)
+    if len(raw) == 2:
+        data, profs = raw
+        return data, profs, _fallback_insights_message()
+    data, profs, summary = raw
+    return data, profs, summary
 
 
 def _download_filename(test_filename: str) -> str:
@@ -130,10 +173,13 @@ if st.button("Run QC", type="primary", disabled=run_disabled):
     with st.status("Running QC…", expanded=True) as status:
 
         def _progress(msg: str) -> None:
-            status.write(msg)
+            try:
+                status.write(str(msg))
+            except Exception:
+                pass
 
         try:
-            qc_bytes, profs, summary = compare_uploaded_pair(
+            qc_bytes, profs, summary = _run_compare_with_optional_progress(
                 original_bytes=orig_bytes,
                 test_bytes=test_bytes,
                 original_filename=orig_name,
@@ -143,10 +189,16 @@ if st.button("Run QC", type="primary", disabled=run_disabled):
                 on_progress=_progress,
             )
         except Exception:
-            status.update(label="QC failed", state="error")
+            try:
+                status.update(label="QC failed", state="error")
+            except Exception:
+                pass
             raise
         else:
-            status.update(label="QC finished", state="complete", expanded=False)
+            try:
+                status.update(label="QC finished", state="complete", expanded=False)
+            except TypeError:
+                status.update(label="QC finished", state="complete")
 
     st.session_state.last_qc = {
         "bytes": qc_bytes,

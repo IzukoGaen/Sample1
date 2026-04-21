@@ -6,6 +6,7 @@ import io
 import logging
 import re
 import zipfile
+import inspect
 from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO
@@ -176,14 +177,16 @@ def compare_uploaded_pair(
     wk_test = pd.read_excel(io.BytesIO(test_bytes), sheet_name=None)
 
     def _run() -> tuple[bytes, dict]:
-        res = compare_workbook_pair(
-            wk_test,
-            wk_orig,
+        _pair_kw: dict = dict(
+            wk_test=wk_test,
+            wk=wk_orig,
             name_test=test_filename,
             name_feed=original_filename,
             filetype=filetype,
-            on_progress=on_progress,
         )
+        if "on_progress" in inspect.signature(compare_workbook_pair).parameters:
+            _pair_kw["on_progress"] = on_progress
+        res = compare_workbook_pair(**_pair_kw)
         if on_progress is not None:
             on_progress("Writing QC Excel to memory…")
         blob = export_log_bytes(res)

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sanitycheck"
+version = "0.1.0"
+description = "Excel feed / test workbook QC (sanity comparisons)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "openpyxl>=3.1",
+    "textdistance>=4.5",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit>=1.28"]
+api = ["fastapi>=0.109", "uvicorn[standard]>=0.27", "python-multipart>=0.0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
